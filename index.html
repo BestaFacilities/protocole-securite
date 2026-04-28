@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Protocole Sécurité - Demathieu Bard</title>
+    <style>
+        :root { --db-blue: #003366; --db-orange: #FF6600; --bg: #f4f7f9; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); margin: 0; padding: 10px; }
+        .container { max-width: 850px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        .header { display: flex; align-items: center; border-bottom: 4px solid var(--db-orange); margin-bottom: 20px; padding-bottom: 15px; }
+        .logo { height: 55px; margin-right: 20px; }
+        h1 { color: var(--db-blue); margin: 0; font-size: 22px; text-transform: uppercase; }
+        .section-title { color: var(--db-blue); border-left: 6px solid var(--db-orange); padding-left: 12px; margin: 25px 0 15px; font-weight: bold; }
+        
+        /* Aperçu PDF */
+        .pdf-viewer { width: 100%; height: 350px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; }
+
+        /* EPI Banner */
+        .status-bar { background: #fff5f0; padding: 15px; border-radius: 10px; border: 1px solid var(--db-orange); margin-bottom: 20px; }
+        .epi-list { display: flex; gap: 20px; font-size: 24px; margin-bottom: 10px; justify-content: center; }
+
+        /* Grid Tuiles */
+        .grid-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .option-card { border: 2px solid #ddd; border-radius: 8px; padding: 12px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 500; position: relative; }
+        .option-card input { position: absolute; opacity: 0; }
+        .option-card.selected { border-color: var(--db-orange); background: var(--db-orange); color: white; }
+
+        label.field-label { display: block; font-weight: bold; margin: 15px 0 5px; color: #444; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 15px; margin-bottom: 10px; }
+        canvas { border: 2px solid var(--db-blue); border-radius: 10px; background: #fff; width: 100%; touch-action: none; }
+        .btn-send { background: var(--db-orange); color: white; border: none; padding: 20px; width: 100%; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <img src="assets/logo-demathieu-bard.png" alt="Logo" class="logo">
+        <h1>Protocole de Sécurité <br><small style="color:#666">Validation Chantier</small></h1>
+    </div>
+
+    <div class="section-title">📄 1. RÈGLES DE SÉCURITÉ (Aperçu)</div>
+    <iframe src="assets/protocole-securite.pdf" class="pdf-viewer"></iframe>
+
+    <div class="status-bar">
+        <div class="epi-list">🥾 🦺 🪖 👓</div>
+        <label style="display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; font-weight: bold; color: #c53030;">
+            <input type="checkbox" id="epi_check" style="width: 25px; height: 25px;"> JE CONFIRME PORTER MES EPI OBLIGATOIRES *
+        </label>
+    </div>
+
+    <form id="protocolForm">
+        <div class="section-title">🚛 2. IDENTIFICATION TRANSPORT</div>
+        <input type="text" id="raison" placeholder="Raison Sociale Transporteur *" required>
+        <input type="text" id="societe" placeholder="Société de livraison (si différente)">
+        <input type="text" id="entreprise" placeholder="Entreprise livrée sur le chantier *" required>
+
+        <div class="section-title">🚜 3. CARACTÉRISTIQUES VÉHICULE</div>
+        <label class="field-label">Type de véhicule :</label>
+        <div class="grid-options">
+            <label class="option-card"><input type="radio" name="type_vehicule" value="Porteur < 3,5T" onclick="selectCard(this)"> Porteur < 3,5T</label>
+            <label class="option-card"><input type="radio" name="type_vehicule" value="Porteur > 3,5T" onclick="selectCard(this)"> Porteur > 3,5T</label>
+        </div>
+
+        <label class="field-label">Caractéristiques :</label>
+        <div class="grid-options">
+            <label class="option-card"><input type="checkbox" name="carac" value="Ensemble articulé" onclick="toggleCard(this)"> Articulé</label>
+            <label class="option-card"><input type="checkbox" name="carac" value="Toupie" onclick="toggleCard(this)"> Toupie</label>
+            <label class="option-card"><input type="checkbox" name="carac" value="Citerne" onclick="toggleCard(this)"> Citerne</label>
+            <label class="option-card"><input type="checkbox" name="carac" value="Benne" onclick="toggleCard(this)"> Benne</label>
+            <label class="option-card"><input type="checkbox" name="carac" value="Plateau" onclick="toggleCard(this)"> Plateau</label>
+            <label class="option-card"><input type="checkbox" name="carac" value="Bâché sol" onclick="toggleCard(this)"> Bâché (sol)</label>
+        </div>
+        <input type="text" id="autre_carac" placeholder="Autre caractéristique...">
+
+        <div class="section-title">📦 4. OPÉRATION & LOGISTIQUE</div>
+        <select id="type_operation">
+            <option value="Déchargement">Déchargement</option>
+            <option value="Chargement">Chargement</option>
+            <option value="Autre">Autre</option>
+        </select>
+        
+        <label class="field-label">Mode de livraison :</label>
+        <select id="livraison_mode">
+            <option value="Livraison autonome">Livraison autonome (Grue embarquée...)</option>
+            <option value="Nécessite MRT">Nécessite MRT / Engin Chantier</option>
+        </select>
+        <textarea id="matieres" placeholder="Matières transportées..."></textarea>
+
+        <div class="section-title">✍️ 5. SIGNATURE CHAUFFEUR</div>
+        <input type="text" id="nom" placeholder="NOM Prénom du chauffeur *" required>
+        
+        <input type="hidden" id="gps_coords">
+        
+        <canvas id="signature" width="700" height="200"></canvas>
+        <button type="button" onclick="resetCanvas()" style="margin: 10px 0;">Effacer</button>
+
+        <button type="button" class="btn-send" onclick="submitForm()">VALIDER ET ENVOYER 📧</button>
+    </form>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+    const canvas = document.getElementById('signature');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    
+    function resetCanvas() { ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.strokeStyle="#003366"; ctx.lineWidth=3; ctx.lineCap="round"; }
+    resetCanvas();
+
+    window.onload = () => {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(pos => {
+                document.getElementById('gps_coords').value = `${pos.coords.latitude}, ${pos.coords.longitude}`;
+            }, null, {enableHighAccuracy: true});
+        }
+    };
+
+    const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+    };
+
+    const start = (e) => { isDrawing=true; const pos=getPos(e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); };
+    const draw = (e) => { if(!isDrawing) return; e.preventDefault(); const pos=getPos(e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); };
+    const stop = () => isDrawing=false;
+
+    canvas.addEventListener("mousedown", start); canvas.addEventListener("mousemove", draw); canvas.addEventListener("mouseup", stop);
+    canvas.addEventListener("touchstart", start); canvas.addEventListener("touchmove", draw); canvas.addEventListener("touchend", stop);
+
+    function selectCard(input) {
+        document.getElementsByName(input.name).forEach(i => i.parentElement.classList.remove('selected'));
+        input.parentElement.classList.add('selected');
+    }
+    function toggleCard(input) {
+        input.checked ? input.parentElement.classList.add('selected') : input.parentElement.classList.remove('selected');
+    }
+
+    async function submitForm() {
+        if(!document.getElementById('epi_check').checked) { alert("⚠️ Validation EPI obligatoire !"); return; }
+        const nom = document.getElementById('nom').value;
+        const raison = document.getElementById('raison').value;
+        const entreprise = document.getElementById('entreprise').value;
+        if(!nom || !raison || !entreprise) { alert("Veuillez remplir les champs étoilés *"); return; }
+
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('fr-FR');
+        const heureStr = now.toLocaleTimeString('fr-FR', {hour:'2d', minute:'2d'});
+
+        const caracs = Array.from(document.querySelectorAll('input[name="carac"]:checked')).map(c => c.value);
+        if(document.getElementById('autre_carac').value) caracs.push(document.getElementById('autre_carac').value);
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(18); doc.text("PROTOCOLE DE SÉCURITÉ VALIDÉ", 20, 20);
+        doc.setFontSize(12);
+        doc.text(`Chauffeur: ${nom}`, 20, 40);
+        doc.text(`Entreprise: ${entreprise}`, 20, 50);
+        doc.text(`GPS: ${document.getElementById('gps_coords').value || 'Inconnu'}`, 20, 60);
+        doc.text(`Date: ${dateStr} à ${heureStr}`, 20, 70);
+        
+        const sigData = canvas.toDataURL('image/png');
+        doc.addImage(sigData, 'PNG', 20, 90, 100, 40);
+
+        const payload = {
+            raison, societe: document.getElementById('societe').value, entreprise,
+            type_operation: document.getElementById('type_operation').value,
+            matieres: document.getElementById('matieres').value,
+            type_vehicule: document.querySelector('input[name="type_vehicule"]:checked')?.value,
+            caracteristiques: caracs.join(', '),
+            livraison_mode: document.getElementById('livraison_mode').value,
+            date: dateStr, heure: heureStr, nom, coords: document.getElementById('gps_coords').value,
+            epi_verifies: true,
+            pdfBase64: doc.output('datauristring').split(',')[1],
+            signatureImage: sigData.split(',')[1],
+            filename: `Protocole_${nom}_${dateStr.replace(/\//g,'-')}.pdf`
+        };
+
+        try {
+            const res = await fetch('http://localhost:3000/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if(res.ok) alert("✅ Protocole envoyé avec succès !");
+        } catch(e) { alert("❌ Erreur de connexion au serveur."); }
+    }
+</script>
+</body>
+</html>
