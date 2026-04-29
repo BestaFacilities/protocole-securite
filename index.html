@@ -188,15 +188,25 @@ const heureStr = maintenant.toLocaleTimeString('fr-FR', {
             filename: `Protocole_${nom}_${dateStr.replace(/\//g,'-')}.pdf`
         };
 
-        try {
-            const res = await fetch('https://protocole-backend.onrender.com/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if(res.ok) alert("✅ Protocole envoyé avec succès !");
-        } catch(e) { alert("❌ Erreur de connexion au serveur."); }
+try {
+    console.log("Tentative d'envoi avec ces données:", payload); // Pour vérifier dans la console F12
+
+    const response = await fetch('https://protocole-backend.onrender.com/send', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+        alert("✅ Envoyé avec succès !");
+    } else {
+        alert("❌ Le serveur a répondu mais il y a un problème.");
     }
-</script>
+} catch (error) {
+    // C'est ici que tu sauras si l'adresse est mauvaise
+    alert("❌ ERREUR DE CONNEXION : " + error.message);
+}</script>
 </body>
 </html>
