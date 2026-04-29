@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const SibApiV3Sdk = require('sib-api-v3-sdk');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors({ origin: '*' }));
 app.use(bodyParser.json({ limit: '50mb' }));
