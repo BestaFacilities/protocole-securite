@@ -16,6 +16,12 @@
         /* Aperçu PDF */
         .pdf-viewer { width: 100%; height: 350px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 15px; }
 
+        .icone-selection, .signature-pad, button {
+    cursor: pointer;
+    touch-action: manipulation; /* Optimise le clic sur mobile */
+    position: relative;
+    z-index: 10; /* Force l'élément à passer devant */
+}
         /* EPI Banner */
         .status-bar { background: #fff5f0; padding: 15px; border-radius: 10px; border: 1px solid var(--db-orange); margin-bottom: 20px; }
         .epi-list { display: flex; gap: 20px; font-size: 24px; margin-bottom: 10px; justify-content: center; }
