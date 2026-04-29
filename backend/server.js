@@ -1,31 +1,4 @@
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const SibApiV3Sdk = require('sib-api-v3-sdk');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors({ origin: '*' }));
-app.use(bodyParser.json({ limit: '50mb' }));
-
-const client = SibApiV3Sdk.ApiClient.instance;
-const apiKey = client.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-
-app.post('/send', async (req, res) => {
-    console.log("Démarrage de la procédure d'envoi pour :", req.body.nom);
-    try {
-        const { 
-            raison, societe, entreprise, type_operation, matieres,
-            type_vehicule, caracteristiques, livraison_mode,
-            date, heure, nom, pdfBase64, signatureImage, 
-            coords, epi_verifies, filename
-        } = req.body;
-
-        const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
         sendSmtpEmail.subject = `✅ PROTOCOLE VALIDÉ - ${entreprise.toUpperCase()} - ${nom}`;
         
         sendSmtpEmail.htmlContent = `
@@ -37,16 +10,18 @@ app.post('/send', async (req, res) => {
                 <h3 style="color: #FF6600;">Infos Chauffeur</h3>
                 <p><strong>Nom :</strong> ${nom} | <strong>Société :</strong> ${raison}</p>
                 <p><strong>Livraison pour :</strong> ${entreprise}</p>
-                <h3 style="color: #FF6600;">Détails</h3>
-                <p><strong>Véhicule :</strong> ${type_vehicule || 'N/A'} (${caracteristiques})</p>
-                <p><strong>Opération :</strong> ${type_operation} (${livraison_mode})</p>
             </div>`;
         
-        // --- LA CORRECTION EST ICI ---
-        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "nepasrepondre@brevo.com" };
+        // --- LA CORRECTION "MIRACLE" ---
+        // On ne met PAS ton adresse perso ici, on laisse Brevo utiliser son système
+        sendSmtpEmail.sender = { "name": "Protocole Chantier", "email": "notifications@brevo.com" };
+        
+        // C'est ICI que tu reçois le mail
         sendSmtpEmail.to = [{ "email": "bestafacilities@outlook.fr" }];
+
+        // Si tu cliques sur "Répondre", ça écrira à ton adresse
         sendSmtpEmail.replyTo = { "email": "bestafacilities@outlook.fr" };
-        // -----------------------------
+        // ------------------------------
 
         const cleanPdf = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
         const cleanSig = signatureImage.includes(',') ? signatureImage.split(',')[1] : signatureImage;
@@ -57,12 +32,3 @@ app.post('/send', async (req, res) => {
         ];
 
         const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-        console.log("Email envoyé avec succès ! ID:", data.messageId);
-        res.json({ success: true, messageId: data.messageId });
-    } catch (error) {
-        console.error("ERREUR BREVO détaillée:", error.response ? error.response.body : error);
-        res.status(500).json({ error: 'Erreur Brevo', details: error.message });
-    }
-});
-
-app.listen(PORT, () => console.log(`🚀 Serveur démarré sur le port ${PORT}`));
