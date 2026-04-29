@@ -14,8 +14,8 @@ const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
         
         // --- LA CORRECTION "MIRACLE" ---
         // On ne met PAS ton adresse perso ici, on laisse Brevo utiliser son système
-        sendSmtpEmail.sender = { "name": "Protocole Chantier", "email": "notifications@brevo.com" };
-        
+// Modifie cette ligne comme ça :
+sendSmtpEmail.sender = { "name": "FORCE TEST 1", "email": "notifications@brevo.com" };        
         // C'est ICI que tu reçois le mail
         sendSmtpEmail.to = [{ "email": "bestafacilities@outlook.fr" }];
 
