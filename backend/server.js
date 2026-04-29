@@ -42,7 +42,7 @@ app.post('/send', async (req, res) => {
                 <p><strong>Opération :</strong> ${type_operation} (${livraison_mode})</p>
             </div>`;
         
-        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "bestafacilities@outlook.fr" };
+        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "nepasrepondre.bestafacilities@gmail.com" };
         sendSmtpEmail.to = [{ "email": "bestafacilities@outlook.fr" }];
         
         // Nettoyage des chaînes Base64 au cas où
