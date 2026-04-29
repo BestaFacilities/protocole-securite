@@ -53,7 +53,7 @@ app.post('/send', async (req, res) => {
             </div>
         `;
         
-        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "bestafacilities@outlook.fr" };
+        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "ne-pas-repondre@bestafacilities.pro" };
         sendSmtpEmail.to = [{ "email": "bestafacilities@outlook.fr" }];
         sendSmtpEmail.attachment = [
             { "content": pdfBase64, "name": filename || "protocole.pdf" },
