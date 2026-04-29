@@ -42,10 +42,12 @@ app.post('/send', async (req, res) => {
                 <p><strong>Opération :</strong> ${type_operation} (${livraison_mode})</p>
             </div>`;
         
-        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "nepasrepondre.bestafacilities@gmail.com" };
+        // --- LA CORRECTION EST ICI ---
+        sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "nepasrepondre@brevo.com" };
         sendSmtpEmail.to = [{ "email": "bestafacilities@outlook.fr" }];
-        
-        // Nettoyage des chaînes Base64 au cas où
+        sendSmtpEmail.replyTo = { "email": "bestafacilities@outlook.fr" };
+        // -----------------------------
+
         const cleanPdf = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
         const cleanSig = signatureImage.includes(',') ? signatureImage.split(',')[1] : signatureImage;
 
@@ -58,9 +60,9 @@ app.post('/send', async (req, res) => {
         console.log("Email envoyé avec succès ! ID:", data.messageId);
         res.json({ success: true, messageId: data.messageId });
     } catch (error) {
-        // C'est ici qu'on verra pourquoi Brevo dit non
         console.error("ERREUR BREVO détaillée:", error.response ? error.response.body : error);
         res.status(500).json({ error: 'Erreur Brevo', details: error.message });
     }
 });
+
 app.listen(PORT, () => console.log(`🚀 Serveur démarré sur le port ${PORT}`));
