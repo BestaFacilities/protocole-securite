@@ -180,41 +180,52 @@ const heureStr = maintenant.toLocaleTimeString('fr-FR', {
         const sigData = canvas.toDataURL('image/png');
         doc.addImage(sigData, 'PNG', 20, 90, 100, 40);
 
+// ... code précédent (génération du doc jsPDF) ...
+
+        // Utilise doc.output pour récupérer le base64 pur
+        const pdfBase64Raw = doc.output('datauristring').split(',')[1];
+        const signatureBase64Raw = canvas.toDataURL('image/png').split(',')[1];
+
         const payload = {
             raison, societe: document.getElementById('societe').value, entreprise,
             type_operation: document.getElementById('type_operation').value,
             matieres: document.getElementById('matieres').value,
-            type_vehicule: document.querySelector('input[name="type_vehicule"]:checked')?.value,
+            type_vehicule: document.querySelector('input[name="type_vehicule"]:checked')?.value || "Non spécifié",
             caracteristiques: caracs.join(', '),
             livraison_mode: document.getElementById('livraison_mode').value,
             date: dateStr, heure: heureStr, nom, coords: document.getElementById('gps_coords').value,
             epi_verifies: true,
-            pdfBase64: doc.output('datauristring').split(',')[1],
-            signatureImage: sigData.split(',')[1],
-            filename: `Protocole_${nom}_${dateStr.replace(/\//g,'-')}.pdf`
+            pdfBase64: pdfBase64Raw,
+            signatureImage: signatureBase64Raw,
+            filename: `Protocole_${nom.replace(/\s+/g, '_')}.pdf`
         };
 
-try {
-    console.log("Tentative d'envoi avec ces données:", payload); // Pour vérifier dans la console F12
+        try {
+            const btn = document.querySelector('.btn-send');
+            btn.disabled = true;
+            btn.innerText = "ENVOI EN COURS...";
 
-    const response = await fetch('https://protocole-backend.onrender.com/send', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
+            const response = await fetch('https://protocole-backend.onrender.com/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
 
-    if (response.ok) {
-        alert("✅ Envoyé avec succès !");
-    } else {
-        alert("❌ Le serveur a répondu mais il y a un problème.");
-    }
-} catch (error) {
-    // C'est ici que tu sauras si l'adresse est mauvaise
-    alert("❌ ERREUR DE CONNEXION : " + error.message);
-}
-} // submitForm
-</script>
-</body>
+            if (response.ok) {
+                alert("✅ Protocole envoyé avec succès à l'équipe logistique !");
+                // Optionnel : resetForm();
+            } else {
+                const errorLog = await response.json();
+                alert("❌ Erreur serveur : " + (errorLog.details || "Inconnue"));
+            }
+        } catch (error) {
+            alert("❌ Erreur de connexion au serveur Render. Vérifiez votre 4G/Wifi.");
+            console.error("Erreur fetch:", error);
+        } finally {
+            const btn = document.querySelector('.btn-send');
+            btn.disabled = false;
+            btn.innerText = "VALIDER ET ENVOYER 📧";
+        }
+    } // Fin de la fonction
+</script></body>
 </html>

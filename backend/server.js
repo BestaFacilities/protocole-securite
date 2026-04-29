@@ -16,6 +16,7 @@ apiKey.apiKey = process.env.BREVO_API_KEY;
 const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 
 app.post('/send', async (req, res) => {
+    console.log("Démarrage de la procédure d'envoi pour :", req.body.nom);
     try {
         const { 
             raison, societe, entreprise, type_operation, matieres,
@@ -25,47 +26,41 @@ app.post('/send', async (req, res) => {
         } = req.body;
 
         const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-        sendSmtpEmail.subject = `✅ PROTOCOLE VALIDÉ - ${entreprise} - ${nom}`;
+        sendSmtpEmail.subject = `✅ PROTOCOLE VALIDÉ - ${entreprise.toUpperCase()} - ${nom}`;
         
         sendSmtpEmail.htmlContent = `
             <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; border: 1px solid #ddd; padding: 20px; border-radius: 10px;">
                 <h2 style="color: #003366; border-bottom: 4px solid #FF6600; padding-bottom: 10px;">Validation Entrée Chantier</h2>
-                
                 <p style="background: #fdf2f2; padding: 10px; border-radius: 5px; color: #c53030; font-weight: bold;">
                     🛡️ EPI Vérifiés : OUI | 📍 GPS : ${coords || 'Non détecté'}
                 </p>
-
-                <h3 style="color: #FF6600;">1. Transport & Intervenants</h3>
-                <p><strong>Transporteur :</strong> ${raison}</p>
-                <p><strong>Société Livraison :</strong> ${societe || 'N/A'}</p>
-                <p><strong>Entreprise livrée :</strong> ${entreprise}</p>
-
-                <h3 style="color: #FF6600;">2. Véhicule & Logistique</h3>
-                <p><strong>Type :</strong> ${type_vehicule}</p>
-                <p><strong>Caractéristiques :</strong> ${caracteristiques}</p>
-                <p><strong>Mode :</strong> ${livraison_mode}</p>
-                <p><strong>Matières :</strong> ${matieres || 'Non précisées'}</p>
-
-                <h3 style="color: #FF6600;">3. Opération</h3>
-                <p><strong>Type Opération :</strong> ${type_operation}</p>
-                <p><strong>Chauffeur :</strong> ${nom}</p>
-                <p><strong>Date/Heure :</strong> ${date} à ${heure}</p>
-            </div>
-        `;
+                <h3 style="color: #FF6600;">Infos Chauffeur</h3>
+                <p><strong>Nom :</strong> ${nom} | <strong>Société :</strong> ${raison}</p>
+                <p><strong>Livraison pour :</strong> ${entreprise}</p>
+                <h3 style="color: #FF6600;">Détails</h3>
+                <p><strong>Véhicule :</strong> ${type_vehicule || 'N/A'} (${caracteristiques})</p>
+                <p><strong>Opération :</strong> ${type_operation} (${livraison_mode})</p>
+            </div>`;
         
         sendSmtpEmail.sender = { "name": "Gare Logistique", "email": "bestafacilities@outlook.fr" };
         sendSmtpEmail.to = [{ "email": "bestafacilities@outlook.fr" }];
+        
+        // Nettoyage des chaînes Base64 au cas où
+        const cleanPdf = pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
+        const cleanSig = signatureImage.includes(',') ? signatureImage.split(',')[1] : signatureImage;
+
         sendSmtpEmail.attachment = [
-            { "content": pdfBase64, "name": filename || "protocole.pdf" },
-            { "content": signatureImage, "name": `Signature_${nom.replace(/\s+/g, '_')}.png` }
+            { "content": cleanPdf, "name": filename || "protocole.pdf" },
+            { "content": cleanSig, "name": `Signature_${nom.replace(/\s+/g, '_')}.png` }
         ];
 
-        await apiInstance.sendTransacEmail(sendSmtpEmail);
-        res.json({ success: true });
+        const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+        console.log("Email envoyé avec succès ! ID:", data.messageId);
+        res.json({ success: true, messageId: data.messageId });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        // C'est ici qu'on verra pourquoi Brevo dit non
+        console.error("ERREUR BREVO détaillée:", error.response ? error.response.body : error);
+        res.status(500).json({ error: 'Erreur Brevo', details: error.message });
     }
 });
-
 app.listen(PORT, () => console.log(`🚀 Serveur démarré sur le port ${PORT}`));
