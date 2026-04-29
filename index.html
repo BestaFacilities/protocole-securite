@@ -152,9 +152,12 @@
         const entreprise = document.getElementById('entreprise').value;
         if(!nom || !raison || !entreprise) { alert("Veuillez remplir les champs étoilés *"); return; }
 
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('fr-FR');
-        const heureStr = now.toLocaleTimeString('fr-FR', {hour:'2d', minute:'2d'});
+const maintenant = new Date();
+const dateStr = maintenant.toLocaleDateString('fr-FR');
+const heureStr = maintenant.toLocaleTimeString('fr-FR', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+});
 
         const caracs = Array.from(document.querySelectorAll('input[name="carac"]:checked')).map(c => c.value);
         if(document.getElementById('autre_carac').value) caracs.push(document.getElementById('autre_carac').value);
