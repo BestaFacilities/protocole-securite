@@ -1,19 +1,16 @@
 {
   "name": "backend-protocole",
-  "version": "2.0.0",
-  "private": true,
-  "description": "Protocole de sécurité chargement/déchargement – Gare Issy RER (formulaire QR code + PDF officiel rempli + e-mail Brevo)",
+  "version": "1.0.0",
+  "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "node test/smoke.js"
-  },
-  "engines": {
-    "node": ">=18.17"
+    "start": "node server.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "pdf-lib": "^1.17.1"
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "sib-api-v3-sdk": "^8.5.0"
   }
 }

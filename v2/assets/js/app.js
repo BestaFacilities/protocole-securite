@@ -6,7 +6,9 @@
     const API_BASE = (() => {
         const q = new URLSearchParams(location.search).get('api');
         if (q) return q.replace(/\/$/, '');
-        return location.hostname.endsWith('github.io') ? 'https://protocole-backend.onrender.com' : '';
+        // Adresse du serveur Render de la v2 : réglée dans index.html (<meta name="api-base">)
+        const meta = document.querySelector('meta[name="api-base"]');
+        return location.hostname.endsWith('github.io') && meta ? meta.content.replace(/\/+$/, '') : '';
     })();
     const DRAFT_KEY = 'protocole-issy-brouillon-v2';
     const ID_KEY = 'protocole-issy-identite-v2';

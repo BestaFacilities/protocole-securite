@@ -17,7 +17,7 @@ from PIL import Image, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PDF = os.path.join(ROOT, "assets", "protocole-securite.pdf")
-AFFICHE = os.path.join(ROOT, "docs", "affiche-gare-issy.png")
+AFFICHE = os.path.join(os.path.dirname(ROOT), "GARE ISSY - PROTOCOLE DE SECURITE.png")
 OUT_PAGES = os.path.join(ROOT, "assets", "pages")
 OUT_ICONS = os.path.join(ROOT, "assets", "icons")
 
