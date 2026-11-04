@@ -1,16 +1,16 @@
 'use strict';
 /**
- * Registre optionnel : envoie chaque validation à un script Google Apps Script
- * qui ajoute une ligne dans un Google Sheet et archive le PDF dans Google Drive.
- * Activé uniquement si SHEETS_WEBHOOK_URL est défini (voir integrations/google-apps-script.gs).
- * Un échec du registre ne bloque jamais la validation du chauffeur (l'e-mail fait foi).
+ * Lien avec le script Google Apps Script (voir integrations/google-apps-script.gs), activé
+ * uniquement si SHEETS_WEBHOOK_URL est défini. Le script :
+ *   - ajoute une ligne dans le registre Google Sheets et range le PDF dans Google Drive ;
+ *   - si MAIL_VIA=gmail, envoie aussi l'e-mail du protocole depuis le compte Gmail ;
+ *   - peut envoyer un e-mail d'alerte (plafond journalier).
+ * Un échec du registre ne bloque jamais la validation du chauffeur.
  */
 const { CHANTIER, CONFIG } = require('./config');
 
-async function enregistrer(d, r, pdfBuffer) {
-    if (!CONFIG.registreUrl) return { skipped: true };
-
-    const ligne = {
+function construireLigne(d, r) {
+    return {
         reference: r.ref,
         horodatage: r.horodatage,
         chantier: CHANTIER.nom,
@@ -31,29 +31,88 @@ async function enregistrer(d, r, pdfBuffer) {
         hauteur_inf_4m2: d.hauteur_ok,
         longueur_inf_8m: d.longueur_ok,
         manutention: r.libelles.manutention.join(', '),
-        gps: r.gps ? r.gps.texte : '',
         distance_chantier_m: r.gps ? r.gps.distance : '',
         alertes: r.alertes.join(' | '),
         langue: r.libelles.langue,
+        appareil: r.appareil,
+        ip: r.ip,
+        empreinte: r.empreinte,
+        id_formulaire: d.id || r.ref,
     };
+}
 
+/** Appel brut du script. Renvoie la réponse JSON ({ ok, archived, mailed, … }) ou lève une erreur. */
+async function appelAppsScript(contenu, timeoutMs = 25000) {
+    if (!CONFIG.registreUrl) throw new Error('Registre non configuré');
     const res = await fetch(CONFIG.registreUrl, {
         method: 'POST',
         headers: { 'content-type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-            secret: CONFIG.registreSecret,
-            ligne,
-            pdf: { nom: r.fichier, base64: pdfBuffer.toString('base64') },
-        }),
+        body: JSON.stringify({ secret: CONFIG.registreSecret, ...contenu }),
         redirect: 'follow',
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(timeoutMs),
     });
     const txt = await res.text();
-    if (!res.ok) throw new Error(`Registre HTTP ${res.status}`);
-    let json = {};
-    try { json = JSON.parse(txt); } catch { /* réponse non JSON */ }
-    if (json.ok === false) throw new Error(`Registre : ${json.error || 'refusé'}`);
+    if (!res.ok) throw new Error(`Apps Script HTTP ${res.status}`);
+    let json;
+    try { json = JSON.parse(txt); } catch { throw new Error('Apps Script : réponse illisible (script mal déployé ?)'); }
+    if (json.ok === false) throw new Error(`Apps Script : ${json.error || 'refusé'}`);
     return json;
 }
 
-module.exports = { enregistrer };
+/**
+ * Archive le protocole (ligne + PDF). Si `mail` est fourni, demande aussi au script de l'envoyer par Gmail.
+ * Renvoie { archived, mailed, mailError? }.
+ */
+async function enregistrer(d, r, pdfBuffer, mail = null, timeoutMs = 25000) {
+    if (!CONFIG.registreUrl) return { skipped: true, archived: false, mailed: false };
+    const contenu = {
+        ligne: construireLigne(d, r),
+        pdf: { nom: r.fichier, base64: pdfBuffer.toString('base64') },
+    };
+    if (mail) {
+        contenu.mail = {
+            to: CONFIG.destinataires.join(','),
+            bcc: CONFIG.copieCachee.join(','),
+            replyTo: CONFIG.repondreA,
+            name: CONFIG.expediteur.nom,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
+        };
+    }
+    const json = await appelAppsScript(contenu, timeoutMs);
+    return {
+        archived: json.archived !== false,
+        mailed: json.mailed === true,
+        mailError: json.mailError || '',
+        duplicate: Boolean(json.duplicate),
+    };
+}
+
+/**
+ * Archivage en arrière-plan avec nouveaux essais (après 20 s puis 2 min) :
+ * utilisé quand l'e-mail est parti par Brevo. N'empêche jamais la réponse au chauffeur.
+ */
+function enregistrerEnArrierePlan(d, r, pdfBuffer, delais = [20000, 120000]) {
+    if (!CONFIG.registreUrl) return;
+    const essai = (n) => {
+        enregistrer(d, r, pdfBuffer)
+            .then(() => console.log(`   registre OK – ${r.ref}${n ? ` (essai n°${n + 1})` : ''}`))
+            .catch((e) => {
+                if (n < delais.length) {
+                    console.warn(`   registre KO – ${r.ref} : ${e.message} → nouvel essai dans ${delais[n] / 1000} s`);
+                    setTimeout(() => essai(n + 1), delais[n]).unref();
+                } else {
+                    console.error(`   registre ABANDONNÉ – ${r.ref} : ${e.message} (le protocole est quand même dans l'e-mail)`);
+                }
+            });
+    };
+    essai(0);
+}
+
+/** E-mail d'alerte envoyé par le script (Gmail). */
+async function alerteAppsScript(subject, text) {
+    return appelAppsScript({ alerte: { to: CONFIG.destinataires.join(','), subject, text } }, 20000);
+}
+
+module.exports = { enregistrer, enregistrerEnArrierePlan, alerteAppsScript, construireLigne };

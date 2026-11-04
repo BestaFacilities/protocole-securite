@@ -1,4 +1,8 @@
-# Analyse du système « Protocole de Sécurité Chargement/Déchargement »
+# Analyse de l'ANCIEN système « Protocole de Sécurité Chargement/Déchargement »
+
+> ℹ️ **Document historique.** Cet audit (septembre 2026) décrit l'**ancien** système (fichiers à la racine du dépôt,
+> service Render `protocole-backend`). La plupart des problèmes listés ici ont été corrigés dans la **v2** (dossier `v2/`).
+> Pour la v2, se reporter à `v2/README.md`.
 
 *Audit réalisé le 25/09/2026 sur la branche `main` (commit `fbafae1`)*
 

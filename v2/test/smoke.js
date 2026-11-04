@@ -1,19 +1,31 @@
 'use strict';
 /**
- * Test rapide, sans réseau : validation, génération du PDF rempli, contenu de l'e-mail
- * et appels HTTP sur le serveur (en mode test, sans clé Brevo).
+ * Test rapide, sans Internet : validation, génération du PDF rempli, contenu de l'e-mail
+ * et appels HTTP sur le serveur (mode test, sans clé Brevo). Un faux « Apps Script » local
+ * permet de tester l'envoi par Gmail, le secours Brevo, le registre et les alertes.
  *   npm test          → écrit un exemple dans outbox/exemple-protocole-rempli.pdf
  */
-process.env.BREVO_API_KEY = '';
-process.env.SHEETS_WEBHOOK_URL = '';
-
 const assert = require('assert');
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
-const { validate } = require('../lib/validate');
-const { buildRecord } = require('../lib/record');
-const { buildPdf } = require('../lib/pdf');
-const { buildEmail } = require('../lib/email');
+
+// ---------------------------------------------------------------- faux script Google Apps Script
+const recus = [];
+let fauxEnPanne = false;
+const faux = http.createServer((req, res) => {
+    let b = '';
+    req.on('data', (c) => { b += c; });
+    req.on('end', () => {
+        const j = JSON.parse(b);
+        recus.push(j);
+        res.setHeader('content-type', 'application/json');
+        if (fauxEnPanne) { res.statusCode = 500; return res.end('{}'); }
+        if (j.secret !== 'secret-test') return res.end(JSON.stringify({ ok: false, error: 'secret invalide' }));
+        return res.end(JSON.stringify({ ok: true, archived: !j.alerte, mailed: Boolean(j.mail || j.alerte) }));
+    });
+});
+const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const signature = 'data:image/png;base64,' + fs.readFileSync(path.join(__dirname, 'fixtures', 'signature.png')).toString('base64');
 
@@ -52,6 +64,24 @@ const exemple = {
 };
 
 (async () => {
+    await new Promise((r) => faux.listen(0, '127.0.0.1', r));
+    process.env.BREVO_API_KEY = '';
+    process.env.SHEETS_WEBHOOK_URL = `http://127.0.0.1:${faux.address().port}/exec`;
+    process.env.SHEETS_WEBHOOK_SECRET = 'secret-test';
+    process.env.MAIL_VIA = 'gmail';
+    process.env.DAILY_MAX = '5';
+    process.env.DAILY_ALERT = '3';
+    const { validate } = require('../lib/validate');
+    const { buildRecord } = require('../lib/record');
+    const { buildPdf } = require('../lib/pdf');
+    const { buildEmail } = require('../lib/email');
+    const { decrireAppareil } = require('../lib/appareil');
+
+    // 0. Description de l'appareil
+    assert.strictEqual(decrireAppareil('Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'), 'Android 14 · Chrome 130');
+    assert.strictEqual(decrireAppareil('Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'), 'iPhone iOS 17.5 · Safari 17.5');
+    assert.strictEqual(decrireAppareil(''), 'Inconnu');
+
     // 1. Les matières transportées sont obligatoires (bug signalé)
     for (const m of ['', '   ', '-', '...', 'rien', 'RAS', 'x', 'ok']) {
         const r = validate({ ...exemple, matieres: m });
@@ -73,15 +103,22 @@ const exemple = {
     assert.strictEqual(v.data.immatriculation, 'AB-123-CD');
     assert.strictEqual(v.data.dim_longueur, 2.6);
 
-    const record = buildRecord(v.data, new Date('2026-09-25T12:32:00Z'));
+    const record = buildRecord(v.data, new Date('2026-09-25T12:32:00Z'), { ip: '203.0.113.7', appareil: 'Android 14 · Chrome 130' });
     assert.strictEqual(record.heure, '14:32', 'heure de Paris attendue');
     assert(record.gps.surSite, 'la position de test est sur le chantier');
     assert(record.alertes.some((a) => a.includes('8 m')));
+    assert(record.fichier.includes('Lukasz'), `lettre Ł perdue dans le nom du fichier : ${record.fichier}`);
+    assert(!('lat' in record.gps) && !('lng' in record.gps), 'les coordonnées GPS exactes ne doivent pas être conservées');
 
-    // 4. E-mail : le HTML saisi par le chauffeur doit être neutralisé
+    // 4. E-mail : le HTML saisi par le chauffeur doit être neutralisé ; pas de coordonnées GPS
+    record.empreinte = 'a'.repeat(64);
     const mail = buildEmail(v.data, record);
     assert(!mail.html.includes('<script>'), 'injection HTML non échappée');
     assert(mail.html.includes('&lt;script&gt;'));
+    assert(!mail.html.includes('48.82') && !mail.html.includes('google.com/maps'), 'coordonnées GPS dans l’e-mail');
+    assert(mail.html.includes('a'.repeat(64)) && mail.text.includes('a'.repeat(64)), 'empreinte absente de l’e-mail');
+    assert(mail.html.includes('203.0.113.7'));
+    record.empreinte = '';
 
     // 5. PDF rempli
     const pdf = await buildPdf(v.data, record);
@@ -111,18 +148,53 @@ const exemple = {
         });
         assert.strictEqual(evil.status, 403);
 
-        const good = await fetch(base + '/send', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ ...exemple, id: 'x2' }),
-        }).then((r) => r.json());
+        const ANDROID = 'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+        const envoyer = (id) => fetch(base + '/send', {
+            method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': ANDROID },
+            body: JSON.stringify({ ...exemple, id }),
+        });
+
+        // a) Envoi par Gmail (Apps Script) : un seul appel qui archive ET envoie l'e-mail
+        const good = await envoyer('x2').then((r) => r.json());
         assert(good.ok && good.ref, JSON.stringify(good));
-        const again = await fetch(base + '/send', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ ...exemple, id: 'x2' }),
-        }).then((r) => r.json());
+        assert.strictEqual(recus.length, 1);
+        const appel = recus[0];
+        assert.strictEqual(appel.ligne.reference, good.ref);
+        assert.match(appel.ligne.empreinte, /^[0-9a-f]{64}$/, 'empreinte SHA-256 attendue dans le registre');
+        assert.strictEqual(appel.ligne.appareil, 'Android 14 · Chrome 130');
+        assert(!('gps' in appel.ligne) && appel.ligne.distance_chantier_m >= 0, 'seule la distance doit partir au registre');
+        assert(appel.mail && appel.mail.subject.includes(exemple.entreprise) && appel.mail.html.includes(appel.ligne.empreinte));
+        const pdfRecu = Buffer.from(appel.pdf.base64, 'base64');
+        assert.strictEqual(require('crypto').createHash('sha256').update(pdfRecu).digest('hex'), appel.ligne.empreinte,
+            'l’empreinte doit correspondre au PDF envoyé');
+
+        // b) Double envoi ignoré
+        const again = await envoyer('x2').then((r) => r.json());
         assert(again.duplicate && again.ref === good.ref, 'le double envoi doit être ignoré');
+        assert.strictEqual(recus.length, 1);
+
+        // c) Apps Script en panne → secours Brevo (mode test : outbox/) et le chauffeur est quand même validé
+        fauxEnPanne = true;
+        const secours = await envoyer('x3').then((r) => r.json());
+        assert(secours.ok, JSON.stringify(secours));
+        assert(fs.existsSync(path.join(__dirname, '..', 'outbox', `${secours.ref}.html`)), 'e-mail de secours Brevo attendu');
+        fauxEnPanne = false;
+
+        // d) Plafond journalier (DAILY_MAX=5, alerte à 3)
+        const avant = recus.length;
+        assert((await envoyer('x4').then((r) => r.json())).ok); // 3e envoi du jour → alerte
+        await attendre(300);
+        assert(recus.slice(avant).some((j) => j.alerte && j.alerte.subject.includes('3 envois')), 'alerte de seuil attendue');
+        assert((await envoyer('x5').then((r) => r.json())).ok);
+        assert((await envoyer('x6').then((r) => r.json())).ok);
+        const bloque = await envoyer('x7');
+        assert.strictEqual(bloque.status, 503);
+        assert.strictEqual((await bloque.json()).code, 'quota');
+        await attendre(300);
+        assert(recus.some((j) => j.alerte && j.alerte.subject.includes('plafond')), 'alerte de plafond attendue');
     } finally {
         server.close();
+        faux.close();
     }
 
     console.log('✅ Tous les tests passent. Exemple : outbox/exemple-protocole-rempli.pdf');

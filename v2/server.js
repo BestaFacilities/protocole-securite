@@ -2,8 +2,8 @@
 /**
  * Serveur du protocole de sécurité (hébergé sur Render).
  *
- *   GET  /health  → réveil / état du serveur (appelé dès l'ouverture du formulaire)
- *   POST /send    → reçoit le formulaire, remplit le PDF officiel, envoie l'e-mail Brevo
+ *   GET  /health  → réveil / état du serveur (formulaire, et surveillance type cron-job.org / UptimeRobot)
+ *   POST /send    → reçoit le formulaire, remplit le PDF officiel, envoie l'e-mail (Gmail ou Brevo) et archive
  *
  * Il sert aussi le formulaire (index.html + assets) pour les tests en local :
  *   npm install && npm start   →  http://localhost:3000
@@ -15,9 +15,11 @@ const express = require('express');
 const { CHANTIER, CONFIG } = require('./lib/config');
 const { validate } = require('./lib/validate');
 const { buildRecord } = require('./lib/record');
+const crypto = require('crypto');
 const { buildPdf } = require('./lib/pdf');
-const { sendEmail } = require('./lib/email');
-const { enregistrer } = require('./lib/registre');
+const { envoyerProtocole } = require('./lib/envoi');
+const quota = require('./lib/quota');
+const { decrireAppareil } = require('./lib/appareil');
 
 const app = express();
 app.disable('x-powered-by');
@@ -58,7 +60,7 @@ app.use('/assets', express.static(path.join(ROOT, 'assets'), { maxAge: '1h', fal
 // ------------------------------------------------------------------ santé / réveil
 app.get('/health', (req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json({ ok: true, chantier: CHANTIER.nom, email: CONFIG.brevoApiKey ? 'brevo' : 'test' });
+    res.json({ ok: true, chantier: CHANTIER.nom });
 });
 
 // ------------------------------------------------------------------ limite de débit (mémoire)
@@ -110,10 +112,18 @@ app.post(['/send', '/api/protocole'], express.json({ limit: '1mb' }), async (req
     }
 
     return rateLimit(req, res, async () => {
+        if (!quota.reserver()) {
+            return res.status(503).json({ ok: false, code: 'quota', error: 'Plafond journalier atteint.' });
+        }
         try {
-            const record = buildRecord(data);
+            const record = buildRecord(data, new Date(), {
+                ip: req.ip || '',
+                appareil: decrireAppareil(req.get('user-agent')),
+            });
             const pdf = await buildPdf(data, record);
-            const mail = await sendEmail(data, record, pdf);
+            // Empreinte SHA-256 : toute modification du PDF, même d'une virgule, change cette suite de caractères
+            record.empreinte = crypto.createHash('sha256').update(pdf).digest('hex');
+            const envoi = await envoyerProtocole(data, record, pdf);
 
             const result = {
                 ref: record.ref,
@@ -128,15 +138,12 @@ app.post(['/send', '/api/protocole'], express.json({ limit: '1mb' }), async (req
             if (data.id) traites.set(data.id, { at: Date.now(), result });
 
             console.log(`✅ ${record.ref} – ${data.transporteur} / ${data.nom} → ${data.entreprise} `
-                + `(PDF ${Math.round(pdf.length / 1024)} Ko, e-mail ${mail.messageId}, ${Date.now() - started} ms)`);
-
-            // Registre (optionnel) : n'empêche jamais la réponse au chauffeur
-            enregistrer(data, record, pdf)
-                .then((r) => { if (!r.skipped) console.log(`   registre OK – ${record.ref}`); })
-                .catch((e) => console.error(`   registre KO – ${record.ref} :`, e.message));
+                + `(PDF ${Math.round(pdf.length / 1024)} Ko, SHA-256 ${record.empreinte}, e-mail ${envoi.canal}`
+                + `${envoi.archived ? ' + registre' : ''}, ${Date.now() - started} ms)`);
 
             return res.json({ ok: true, ...result });
         } catch (e) {
+            quota.liberer();
             console.error('❌ Échec de l’envoi :', e.message);
             return res.status(502).json({ ok: false, error: 'L’envoi a échoué. Réessayez dans un instant.' });
         }
@@ -157,6 +164,9 @@ if (require.main === module) {
         console.log(`🚀 Protocole ${CHANTIER.nom} – serveur démarré sur le port ${CONFIG.port}`);
         if (!CONFIG.brevoApiKey) console.log('   ⚠️  BREVO_API_KEY absente : mode test, les e-mails sont écrits dans ./outbox/');
         if (!CONFIG.registreUrl) console.log('   ℹ️  Registre Google Sheets non configuré (facultatif).');
+        console.log(`   E-mail : ${CONFIG.envoiVia === 'gmail' && CONFIG.registreUrl ? 'Gmail (Apps Script), Brevo en secours' : 'Brevo'}`
+            + ` · plafond ${CONFIG.plafondJour}/jour, alerte à ${CONFIG.alerteJour}`);
+        if (CONFIG.envoiVia === 'gmail' && !CONFIG.registreUrl) console.log('   ⚠️  MAIL_VIA=gmail mais SHEETS_WEBHOOK_URL absente : envoi par Brevo.');
     });
 }
 

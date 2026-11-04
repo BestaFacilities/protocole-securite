@@ -37,20 +37,25 @@ function formatDistance(m) {
     return m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`;
 }
 
-function buildRecord(d, now = new Date()) {
+/**
+ * @param d     données validées
+ * @param now   date du serveur
+ * @param meta  { ip, appareil } : éléments de preuve techniques (facultatifs)
+ */
+function buildRecord(d, now = new Date(), meta = {}) {
     const p = partsInParis(now);
     const ref = `${CHANTIER.code}-${p.year}${p.month}${p.day}-${p.hour}${p.minute}-${randomCode(4)}`;
 
+    // Seule la DISTANCE au chantier est conservée : les coordonnées exactes du chauffeur
+    // ne figurent ni dans l'e-mail, ni dans le PDF, ni dans le registre.
     let gps = null;
     if (d.gps) {
         const distance = distanceMetres(d.gps.lat, d.gps.lng, CHANTIER.latitude, CHANTIER.longitude);
         gps = {
-            ...d.gps,
+            accuracy: d.gps.accuracy,
             distance,
             distanceTexte: formatDistance(distance),
             surSite: distance <= CHANTIER.rayonAlerteMetres,
-            lien: `https://www.google.com/maps?q=${d.gps.lat.toFixed(6)},${d.gps.lng.toFixed(6)}`,
-            texte: `${d.gps.lat.toFixed(6)}, ${d.gps.lng.toFixed(6)}`,
         };
     }
 
@@ -82,6 +87,9 @@ function buildRecord(d, now = new Date()) {
         iso: now.toISOString(),
         parts: p,
         gps,
+        ip: meta.ip || '',
+        appareil: meta.appareil || '',
+        empreinte: '', // empreinte SHA-256 du PDF, ajoutée une fois le PDF généré
         alertes,
         libelles: {
             operation: L.operation[d.operation],
@@ -100,8 +108,12 @@ function buildRecord(d, now = new Date()) {
     };
 }
 
+// Lettres qui ne se décomposent pas en « lettre + accent » (ex. Ł polonais)
+const SPECIALES = { 'ł': 'l', 'Ł': 'L', 'đ': 'd', 'Đ': 'D', 'ß': 'ss', 'ø': 'o', 'Ø': 'O', 'æ': 'ae', 'Æ': 'AE', 'œ': 'oe', 'Œ': 'OE', 'ı': 'i' };
+
 function slug(s) {
     return String(s)
+        .replace(/[łŁđĐßøØæÆœŒı]/g, (c) => SPECIALES[c])
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '')
