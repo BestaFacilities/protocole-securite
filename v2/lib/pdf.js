@@ -346,10 +346,11 @@ async function addAttestation(pdf, ctx) {
     section('SÉCURITÉ ET CONTRÔLES');
     row('EPI déclarés portés', r.libelles.epi.join(', '));
     row('Lecture du protocole', 'Confirmée par le chauffeur avant signature');
-    row('Position GPS', r.gps
-        ? `${r.gps.texte} (précision ±${r.gps.accuracy ?? '?'} m) – à ${r.gps.distanceTexte} du chantier`
-        : 'Non transmise', { color: r.gps && r.gps.surSite ? INK : RED });
+    row('Distance au chantier', r.gps
+        ? `${r.gps.distanceTexte} (mesure GPS du téléphone, précision ±${r.gps.accuracy ?? '?'} m)`
+        : 'Position GPS non transmise', { color: r.gps && r.gps.surSite ? INK : RED });
     row('Langue du formulaire', r.libelles.langue);
+    row('Appareil et adresse IP', [r.appareil, r.ip ? `IP ${r.ip}` : ''].filter(Boolean).join(' – ') || 'Non disponibles');
     if (r.alertes.length) row('Points de vigilance', r.alertes.join(' · '), { color: RED });
     y += 6;
 
@@ -378,6 +379,10 @@ async function addAttestation(pdf, ctx) {
     write(page, `par ${d.nom}`, M + 6, y + 27, { size: 9.5, color: NAVY, maxWidth: 240 });
     write(page, 'Entreprise d\'accueil : ' + 'Demathieu Bard Construction', M + 6, y + 48, { size: 8.5, color: GREY });
     write(page, `Contact chantier : ${CHANTIER.contact.nom}`, M + 6, y + 60, { size: 8.5, color: GREY, maxWidth: 240 });
+
+    // Preuve d'intégrité : l'empreinte du fichier ne peut pas figurer dans le fichier lui-même
+    write(page, "Empreinte numérique (SHA-256) de ce document : indiquée dans l'e-mail de validation et dans le registre.", M, 800,
+        { size: 7.5, color: GREY, maxWidth: W });
 
     // Pied de page identique au document d'origine
     page.drawLine({ start: { x: M, y: H - 812 }, end: { x: 552, y: H - 812 }, thickness: 0.5, color: GREY });

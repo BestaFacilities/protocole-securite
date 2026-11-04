@@ -14,6 +14,7 @@
     const ID_KEY = 'protocole-issy-identite-v2';
     const HIST_KEY = 'protocole-issy-entreprises';
     const LANG_KEY = 'protocole-issy-langue';
+    const PENDING_KEY = 'protocole-issy-envoi-en-attente-v2';
     const DRAFT_MAX_AGE = 12 * 60 * 60 * 1000;
     const STEPS = 6;
     const IDENTITY_FIELDS = ['transporteur', 'fournisseur', 'nom', 'telephone', 'immatriculation', 'adresse'];
@@ -274,7 +275,8 @@
         if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return fields.length === 0;
     }
-    function showFormError(key) {
+    function showFormError(key, kind = 'error') {
+        formError.className = 'banner ' + kind;
         formError.dataset.key = key;
         formError.textContent = t(key);
         formError.hidden = false;
@@ -564,7 +566,17 @@
     }
 
     // ------------------------------------------------------------------ envoi
+    // Le protocole signé est gardé dans le téléphone tant que le serveur n'a pas confirmé la réception.
+    // Si le réseau ou le serveur ne répond pas, il est renvoyé automatiquement (dès que le réseau revient,
+    // puis toutes les 15 à 60 s), même après fermeture et réouverture de la page (pendant 12 h).
+    // Le serveur reconnaît un renvoi du même formulaire et ne crée pas de doublon.
+    let pending = null;
+    let sending = false;
+    let attempts = 0;
+    let retryTimer = null;
+
     async function submit() {
+        if (sending) return null;
         clearErrors();
         const v = getValues();
         for (let s = 1; s <= STEPS; s++) {
@@ -572,62 +584,111 @@
             if (Object.keys(e).length) {
                 if (s !== step) go(s);
                 setTimeout(() => showErrors(e), s !== step ? 350 : 0);
-                return;
+                return null;
             }
         }
+        btnSend.disabled = true;
+        if (!gps && gpsState !== 'ko') await Promise.race([locate(7000), new Promise((r) => setTimeout(r, 7000))]);
+
+        pending = {
+            at: Date.now(),
+            v,
+            payload: {
+                ...v,
+                id: draftId,
+                lang,
+                fonction: 'Chauffeur livreur',
+                gps,
+                signature: sig.toDataURL(),
+                website: form.website.value,
+            },
+        };
+        store.set(PENDING_KEY, pending);
+        attempts = 0;
+        return trySend();
+    }
+    btnSend.addEventListener('click', submit);
+
+    function clearPending() {
+        pending = null;
+        clearTimeout(retryTimer);
+        store.del(PENDING_KEY);
+    }
+
+    function scheduleRetry() {
+        clearTimeout(retryTimer);
+        const delay = navigator.onLine === false ? 60000 : Math.min(60000, 15000 * attempts);
+        retryTimer = setTimeout(trySend, delay);
+    }
+    window.addEventListener('online', () => {
+        if (!pending || sending) return;
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(trySend, 1500);
+    });
+
+    async function trySend() {
+        if (sending || !pending) return null;
+        sending = true;
+        clearTimeout(retryTimer);
+        attempts += 1;
         btnSend.disabled = true;
         btnBack.disabled = true;
         const label = btnSend.innerHTML;
         btnSend.textContent = t('send.sending');
         const slow = setTimeout(() => { if (!serverReady) btnSend.textContent = t('send.slow'); }, 5000);
 
-        if (!gps && gpsState !== 'ko') await Promise.race([locate(7000), new Promise((r) => setTimeout(r, 7000))]);
-
-        const payload = {
-            ...v,
-            id: draftId,
-            lang,
-            fonction: 'Chauffeur livreur',
-            gps,
-            signature: sig.toDataURL(),
-            website: form.website.value,
-        };
+        let outcome = 'retry';
         try {
             const ctrl = new AbortController();
             const timeout = setTimeout(() => ctrl.abort(), 110000);
             const res = await fetch(API_BASE + '/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(pending.payload),
                 signal: ctrl.signal,
             });
             clearTimeout(timeout);
             serverReady = true;
             const data = await res.json().catch(() => ({}));
-            if (res.ok && data.ok) return success(data, v);
-            if (res.status === 400 && data.errors) {
+            if (res.ok && data.ok) {
+                outcome = 'ok';
+                const v = pending.v;
+                clearPending();
+                success(data, v);
+            } else if (res.status === 400 && data.errors) {
+                outcome = 'fatal';
                 const errs = {};
                 Object.keys(data.errors).forEach((f) => { errs[f] = ERROR_KEY[f] || 'err.required'; });
                 const firstStep = Math.min(...Object.keys(errs).map((f) => FIELD_STEP[f] || 6));
                 if (firstStep !== step) go(firstStep);
                 setTimeout(() => { showErrors(errs); showFormError('err.fix'); }, 350);
             } else if (res.status === 429) {
+                outcome = 'fatal';
                 showFormError('err.rate');
-            } else {
+            } else if (res.status === 503 && data.code === 'quota') {
+                outcome = 'fatal';
+                showFormError('err.quota');
+            } else if (res.status === 403 || res.status === 413) {
+                outcome = 'fatal';
                 showFormError('err.server');
             }
         } catch (err) {
-            showFormError('err.network');
+            outcome = 'retry'; // pas de réseau, délai dépassé…
         } finally {
             clearTimeout(slow);
+            sending = false;
             btnSend.disabled = false;
             btnBack.disabled = false;
             btnSend.innerHTML = label;
             applyLang(lang);
         }
+        if (outcome === 'fatal') clearPending();
+        if (outcome === 'retry') {
+            showFormError('err.queued', 'warn');
+            scheduleRetry();
+        }
         return null;
     }
-    btnSend.addEventListener('click', submit);
 
     function success(data, v) {
         $('#okRef').textContent = data.ref;
@@ -653,6 +714,7 @@
     }
 
     $('#restart').addEventListener('click', () => {
+        clearPending();
         form.reset();
         sig.clear();
         draftId = newId();
@@ -676,4 +738,15 @@
     updateStatus();
     warmup();
     locate();
+
+    // Un protocole signé n'avait pas pu partir (réseau coupé, page fermée…) : on le renvoie
+    const p = store.get(PENDING_KEY);
+    if (p && p.payload && p.v && Date.now() - p.at < DRAFT_MAX_AGE) {
+        pending = p;
+        go(STEPS);
+        showFormError('err.queued', 'warn');
+        retryTimer = setTimeout(trySend, 1500);
+    } else if (p) {
+        store.del(PENDING_KEY);
+    }
 })();

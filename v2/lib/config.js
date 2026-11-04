@@ -51,6 +51,11 @@ const CONFIG = {
     production: env('NODE_ENV', '') === 'production' || Boolean(process.env.RENDER),
     timezone: 'Europe/Paris',
 
+    // Canal d'envoi de l'e-mail :
+    //   'brevo' (défaut) : envoi par Brevo ;
+    //   'gmail'          : envoi par Gmail via le script Google Apps Script (registre), Brevo en secours.
+    envoiVia: env('MAIL_VIA', 'brevo').toLowerCase() === 'gmail' ? 'gmail' : 'brevo',
+
     brevoApiKey: env('BREVO_API_KEY', ''),
     expediteur: {
         email: env('MAIL_SENDER_EMAIL', 'bestafacilities@outlook.fr'),
@@ -70,6 +75,11 @@ const CONFIG = {
     // Anti-abus : nombre maximum d'envois par adresse IP sur la fenêtre donnée
     limiteEnvois: Number(env('RATE_LIMIT_MAX', 12)),
     limiteFenetreMinutes: Number(env('RATE_LIMIT_WINDOW_MIN', 15)),
+
+    // Plafond journalier (tous téléphones confondus) : protège les quotas Gmail/Brevo contre un envoi massif.
+    // Un e-mail d'alerte est envoyé quand le nombre de protocoles du jour atteint DAILY_ALERT, puis DAILY_MAX.
+    plafondJour: Number(env('DAILY_MAX', 150)),
+    alerteJour: Number(env('DAILY_ALERT', 60)),
 };
 
 module.exports = { CHANTIER, CONFIG };
