@@ -39,7 +39,7 @@ Autres fonctions :
 - **Empreinte numérique SHA-256** du PDF dans l'e-mail et le registre, plus l'appareil et l'adresse IP sur l'attestation : preuve que le document n'a pas été modifié.
 - **Plafond journalier** (150 par défaut) avec e-mail d'alerte (à 60 par défaut, puis au plafond) : protège les quotas gratuits.
 - Envoi par **Gmail** (Apps Script) avec **secours automatique par Brevo**.
-- **Résumé du soir** des livraisons du jour (registre Google Sheets).
+- **Résumé du soir** des livraisons du jour, **résumé de la semaine** le vendredi et **bilan du mois** le dernier jour du mois (registre Google Sheets). Les résumés semaine et mois ont le **fichier Excel** de la période en pièce jointe ; l'Excel du mois est aussi archivé dans Drive (« Archives Excel »).
 - Messages d'erreur renvoyant vers le **protocole papier au poste de garde** si la panne dure.
 - Écran « PROTOCOLE VALIDÉ » à montrer au chef de chantier.
 
